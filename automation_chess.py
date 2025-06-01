@@ -5,6 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
 import os
 import time
+import re
 
 # Load environment variables
 load_dotenv()
@@ -15,7 +16,7 @@ print(f"Username from env: {username}")
 print(f"Password from env: {'*' * len(password) if password else None}")
 
 
-pgn1= """
+pgn= """
 [Event "Fool's Mate"]
 [Site "?"]
 [Date "????.??.??"]
@@ -27,7 +28,7 @@ pgn1= """
 1. f3 e5 2. g4 Qh4#
 """
 # PGN to analyze
-pgn = """
+pgn1 = """
 [Event "Kasparov Immortal"]
 [Site "Wijk aan Zee"]
 [Date "1999.01.20"]
@@ -46,6 +47,19 @@ pgn = """
 Rd6 46.Qc7 Rd3 47.Qc6+ Kxh2 48.Qxg6 Kg2 49.Qxf5 Rf3 50.g4 Kg3
 51.g5 Rf2 52.g6 c2 53.g7 1-0
 """
+def get_last_move_number(pgn_text):
+    # Extract the moves part (skip PGN tags)
+    moves_section = pgn_text.strip().split('\n\n', 1)[1].strip()
+    
+    # Find all occurrences of move numbers in the moves section
+    move_numbers = re.findall(r'(\d+)\.', moves_section)
+    
+    if move_numbers:
+        return int(move_numbers[-1])
+    else:
+        return None
+
+last_move_number = get_last_move_number(pgn)
 
 # Start browser and login
 driver = webdriver.Chrome()
@@ -112,8 +126,37 @@ start_review_button = wait.until(EC.element_to_be_clickable((
 )))
 
 # Click the button
+time.sleep(3)
 start_review_button.click()
 print("✅ Reivew Clicked")
+time.sleep(3)
+for move_num in range(0, last_move_number + 1):
+    explanation_selector = "div.bot-speech-content-component.bot-speech-content-bot-align-bottom.bot-speech-content-should-show-bot"
+    
+    # Wait until explanation div is present and get its text
+    explanation_div = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, explanation_selector)))
+    old_explanation_text = explanation_div.text.strip()
+
+    # Wait for Next Move button to be clickable
+    next_move_btn = wait.until(EC.element_to_be_clickable((
+        By.CSS_SELECTOR,
+        "button.cc-button-component.cc-button-secondary.cc-button-large.cc-bg-secondary.cc-button-full[aria-label='Next Move']"
+    )))
+
+    next_move_btn.click()
+    print(f"Clicked Next Move button for move {move_num}")
+
+    try:
+        # Wait until explanation text changes OR timeout after 10 seconds
+        wait.until(lambda driver: driver.find_element(By.CSS_SELECTOR, explanation_selector).text.strip() != old_explanation_text)
+        print(f"Explanation updated for move {move_num}")
+    except TimeoutException:
+        print(f"⚠️ Timeout waiting for explanation update after move {move_num}. Maybe text didn't change.")
+
+    # Optional short pause to stabilize UI
+    time.sleep(3)
+
+
 
 
 # # logic to hit the great moves:
