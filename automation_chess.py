@@ -83,11 +83,11 @@ password_input.send_keys(password)
 login_button = driver.find_element(By.XPATH, "//button[@type='submit']")
 login_button.click()
 
-print("✅ Logged in successfully!")
+print(" Logged in successfully!")
 time.sleep(3)
 # Navigate to analysis board
 driver.get("https://www.chess.com/analysis")
-print("➡️ Navigating to analysis board...")
+print(" Navigating to analysis board...")
 time.sleep(5)
 
 textarea = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "textarea.load-from-pgn-textarea")))
@@ -112,10 +112,10 @@ tab_buttons = tab_container.find_elements(By.CSS_SELECTOR, "button.board-tab-ite
 for tab in tab_buttons:
     if "Review" in tab.text or tab.get_attribute("aria-selected") == "false":
         tab.click()
-        print("✅ Clicked the desired tab.")
+        print("Clicked the desired tab.")
         break
 else:
-    print("❌ Could not find the desired tab.")
+    print("Could not find the desired tab.")
 
 time.sleep(5)
 
@@ -128,7 +128,7 @@ start_review_button = wait.until(EC.element_to_be_clickable((
 # Click the button
 time.sleep(3)
 start_review_button.click()
-print("✅ Reivew Clicked")
+print("Reivew Clicked")
 time.sleep(3)
 for move_num in range(0, last_move_number + 1):
     explanation_selector = "div.bot-speech-content-component.bot-speech-content-bot-align-bottom.bot-speech-content-should-show-bot"
@@ -151,7 +151,7 @@ for move_num in range(0, last_move_number + 1):
         wait.until(lambda driver: driver.find_element(By.CSS_SELECTOR, explanation_selector).text.strip() != old_explanation_text)
         print(f"Explanation updated for move {move_num}")
     except TimeoutException:
-        print(f"⚠️ Timeout waiting for explanation update after move {move_num}. Maybe text didn't change.")
+        print(f"Timeout waiting for explanation update after move {move_num}. Maybe text didn't change.")
 
     # Optional short pause to stabilize UI
     time.sleep(3)
