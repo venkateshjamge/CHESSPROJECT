@@ -1,115 +1,82 @@
-import sys
-
-# For Python 3.8+ (which includes your 3.13)
-if sys.version_info >= (3, 8):
-    from importlib import metadata
-else:
-    # Fallback for older Python versions, though not needed for you
-    try:
-        import importlib_metadata as metadata
-    except ImportError:
-        metadata = None
-
-try:
-    if metadata:
-        version = metadata.version("obs-websocket-py")
-        print(f"DEBUG: obs-websocket-py version installed: {version}")
-    else:
-        print("DEBUG: Could not determine obs-websocket-py version (importlib.metadata not available/fallback failed).")
-except metadata.PackageNotFoundError:
-    print("DEBUG: obs-websocket-py not found in this environment via importlib.metadata.")
-except Exception as e:
-    print(f"DEBUG: Error getting obs-websocket-py version: {e}")
-
-from obswebsocket import obsws, requests
-# We will not attempt to import specific OBS-related exceptions here
-# as they seem to not be directly exposed in your version.
-# Instead, we'll rely on general Python exceptions.
-
+import subprocess
+import pygetwindow as gw
+from datetime import datetime
+import os
 import time
-import socket # Import socket to catch ConnectionRefusedError and TimeoutError
 
-host = "192.168.1.2"  # your OBS server IP
-port = 4455           # OBS WebSocket port
-password = "Virat123" # your OBS WebSocket password
+# Import your chess analysis function (make sure this is correct)
+from automation_chess import run_chess_analysis
 
-ws = None # Initialize ws to None for the finally block
+def start_recording(duration_sec=60):
+    chrome_windows = gw.getWindowsWithTitle('Chrome')
+    if not chrome_windows:
+        raise Exception("Chrome window not found.")
+    
+    win = chrome_windows[0]
+    left = max(0, 20)
+    top = max(0, 200)
+    width = 1300
+    height = win.height -30
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_file = f"chrome_recording_{timestamp}.mp4"
+    output_path = os.path.join(os.getcwd(), output_file)
 
-try:
-    print(f"Attempting to connect to OBS WebSocket at {host}:{port}...")
-    ws = obsws(host, port, password)
-    ws.connect()
-    print("✅ Connected to remote OBS")
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f", "gdigrab",
+        "-framerate", "30",
+        "-offset_x", str(left),
+        "-offset_y", str(top),
+        "-video_size", f"{width}x{height}",
+        "-i", "desktop",
+        "-f", "dshow",
+        "-i", "audio=CABLE Output (VB-Audio Virtual Cable)",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-shortest",
+        "-t", str(duration_sec),
+        output_path
+    ]
 
-    # --- Diagnostic Steps ---
+    print(f"📹 Recording Chrome window ({width}x{height}) at ({left},{top}) with audio...")
+    proc = subprocess.Popen(cmd)
+    return proc, output_path
 
-    # 1. Get Recording Status (Crucial for debugging)
+def main():
+    # Example PGN to analyze
+    pgn = """
+    [Event "Fool's Mate"]
+    [Site "?"]
+    [Date "????.??.??"]
+    [Round "?"]
+    [White "White"]
+    [Black "Black"]
+    [Result "0-1"]
+
+    1. f3 e5 2. g4 Qh4#
+    """
+
+    # Start recording for 60 seconds (adjust as needed)
+    record_proc, video_path = start_recording(duration_sec=20)
+
     try:
-        response = ws.call(requests.GetRecordingStatus())
-        is_recording = response.getRecording()
-        print(f"Current recording status: {'Recording' if is_recording else 'Not recording'}")
-        if is_recording:
-            print("Warning: OBS was already recording!")
-            # Consider stopping it if you want to ensure a fresh start
-            # ws.call(requests.StopRecording())
-            # time.sleep(1) # Give OBS a moment to stop
-    except Exception as e: # Catch any exception during this call
-        print(f"Error getting recording status: {e}")
+        # Run your chess analysis function (blocking call)
+        run_chess_analysis(pgn)
+    finally:
+        # Wait a few seconds to capture final moments after analysis finishes
+        time.sleep(5)
+        # Stop recording if still running
+        if record_proc.poll() is None:
+            print("Stopping recording...")
+            record_proc.terminate()
+            record_proc.wait()
 
-    # 2. Get Studio Mode Status (Can sometimes affect behavior)
-    try:
-        response = ws.call(requests.GetStudioModeStatus())
-        print(f"Studio Mode enabled: {response.getStudioModeEnabled()}")
-    except Exception as e: # Catch any exception during this call
-        print(f"Error getting studio mode status: {e}")
+    print(f"✅ Recording saved to: {video_path}")
 
-
-    # 3. Check for specific OBS errors after starting recording
-    try:
-        print("Attempting to start recording...")
-        start_response = ws.call(requests.StartRecording())
-        print("🎥 StartRecording request sent.")
-
-        # --- Re-check recording status immediately after the call ---
-        time.sleep(1) # Give OBS a very brief moment to initiate recording
-        status_after_start = ws.call(requests.GetRecordingStatus())
-        if status_after_start.getRecording():
-            print("✅ Recording confirmed to be started!")
-        else:
-            print("❌ Recording did NOT start after request. Check OBS logs for errors!")
-
-    except Exception as e: # Catch any exception during this call
-        print(f"Error starting recording: {e}")
-
-    print("Recording for 10 seconds...")
-    time.sleep(10)  # record for 10 seconds
-
-    print("Attempting to stop recording...")
-    try:
-        ws.call(requests.StopRecording())
-        print("🛑 StopRecording request sent.")
-        # --- Re-check recording status immediately after the call ---
-        time.sleep(1) # Give OBS a very brief moment to stop recording
-        status_after_stop = ws.call(requests.GetRecordingStatus())
-        if not status_after_stop.getRecording():
-            print("✅ Recording confirmed to be stopped!")
-        else:
-            print("❌ Recording did NOT stop after request. Check OBS logs for errors!")
-
-    except Exception as e: # Catch any exception during this call
-        print(f"Error stopping recording: {e}")
-
-# Catch connection-specific errors first, if they occur before ws.connect() fully succeeds
-except (socket.timeout, ConnectionRefusedError) as e:
-    print(f"❌ Connection failed (Network Error): {e}. Please ensure OBS is running and OBS WebSocket is enabled with the correct IP, port, and password.")
-except Exception as e:
-    print(f"An unexpected error occurred: {e}")
-finally:
-    if ws:
-        try:
-            ws.disconnect()
-            print("✅ Disconnected from OBS")
-        except Exception as e:
-            print(f"Error during disconnection: {e}")
-    else:
-        print("No active connection to disconnect.")
+if __name__ == "__main__":
+    main()
