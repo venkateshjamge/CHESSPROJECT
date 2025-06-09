@@ -3,6 +3,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 
 from dotenv import load_dotenv
 import os
@@ -27,12 +29,23 @@ def run_chess_analysis(pgn):
     last_move_number = get_last_move_number(pgn)
     last_move_number = 2 * last_move_number
 
-    driver = webdriver.Chrome()
+    options = webdriver.ChromeOptions()
+    options.add_argument("--start-fullscreen")
+    options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+    options.add_experimental_option("useAutomationExtension", False)
+
+    # Disable password save prompt
+    prefs = {
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False
+    }
+    options.add_experimental_option("prefs", prefs)
+
+    driver = webdriver.Chrome(options=options)
     wait = WebDriverWait(driver, 20)
-    driver.set_window_size(1920, 8080)
-    driver.set_window_position(0, 0)
-    # time.sleep(60)
+
     driver.get("https://www.chess.com/login")
+    time.sleep(2)
 
     username_input = wait.until(EC.presence_of_element_located(
         (By.XPATH, "//input[contains(@placeholder, 'Username') or contains(@name, 'username')]")
@@ -90,6 +103,8 @@ def run_chess_analysis(pgn):
     print("Review Clicked")
     time.sleep(3)
 
+    brilliant_moves = []
+
     for move_num in range(0, last_move_number):
         explanation_selector = "div.bot-speech-content-component.bot-speech-content-bot-align-bottom.bot-speech-content-should-show-bot"
         explanation_div = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, explanation_selector)))
@@ -100,19 +115,30 @@ def run_chess_analysis(pgn):
             driver.execute_script("arguments[0].scrollIntoView(true);", next_move_btn)
             next_move_btn.click()
         except TimeoutException:
+            time.sleep(3)
             print(f"❌ Could not find 'Next Move' button on move {move_num}. Skipping...")
             continue
 
         try:
             wait.until(lambda d: d.find_element(By.CSS_SELECTOR, explanation_selector).text.strip() != old_explanation_text)
-            print(f"Explanation updated for move {move_num}")
+            explanation_div = driver.find_element(By.CSS_SELECTOR, explanation_selector)
+            explanation_text = explanation_div.text.strip()
+            print(f"Explanation updated for move {move_num}: {explanation_text}")
+
+            if "brilliant" in explanation_text.lower():
+                print(f"🌟 Brilliant move found at move {move_num}")
+                brilliant_moves.append(move_num)
+
         except TimeoutException:
+            time.sleep(3)
             print(f"Timeout waiting for explanation update after move {move_num}. Maybe text didn't change.")
 
         time.sleep(3)
 
     time.sleep(10)
     driver.quit()
+
+    return brilliant_moves
 
 if __name__ == "__main__":
     pgn = """
